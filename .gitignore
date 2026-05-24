@@ -1,0 +1,18 @@
+# Dependency directories
+node_modules/
+frontend/node_modules/
+
+# Environment variables & local configuration
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
