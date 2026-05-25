@@ -1,27 +1,32 @@
 import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ==========================================
-// MIDDLEWARE CONFIGURATION
-// ==========================================
 app.use(cors());
-app.use(express.json()); // CRITICAL: Fixes empty bodies (req.body) on PUT/POST requests
+app.use(express.json());
 
-// ==========================================
-// MONGODB DATABASE CONFIGURATION
-// ==========================================
-// Replace 'taskflow_db' with your actual database name if different
+// SMART FALLBACK: Tries your .env cloud string first. If it can't reach it, it connects locally.
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/taskflow_db';
 
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('🚀 Connected to MongoDB pipeline successfully.'))
-  .catch((err) => console.error('❌ Database connection fault:', err));
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 4000 // Stops it from hanging forever if your Wi-Fi blocks it
+})
+  .then(() => console.log('🚀 Successfully tunneled into Live MongoDB Instance.'))
+  .catch((err) => {
+    console.log('⚠️ Network restriction detected. Gracefully dropping back to local storage cluster...');
+    // Fallback handshake execution
+    mongoose.connect('mongodb://127.0.0.1:27017/taskflow_db')
+      .then(() => console.log('✅ Connected safely to Local Fallback Database Engine.'))
+      .catch((localErr) => console.error('❌ Complete Database Fault:', localErr));
+  });
 
-// Define Task Schema
+// Task Schema
 interface ITask {
   title: string;
   description: string;
@@ -45,87 +50,70 @@ const taskSchema = new mongoose.Schema<ITask>({
 const Task = mongoose.model<ITask>('Task', taskSchema);
 
 // ==========================================
-// ROUTE ENDPOINTS
+// AUTHENTICATION PORTAL GATE ENDPOINT
 // ==========================================
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  const { email, password } = req.body;
 
-// 1. GET ALL TASKS (with limit constraints)
+  if ((email === 'shahzaib@syncsphere.com' || email === 'ahmed@syncsphere.com') && password === 'admin123') {
+    return res.json({
+      success: true,
+      user: {
+        name: email === 'shahzaib@syncsphere.com' ? 'Shahzaib Shah' : 'Syed Ahmed Raza',
+        email: email,
+        role: 'Lead Architect'
+      }
+    });
+  }
+
+  return res.status(401).json({ success: false, error: 'Invalid security credentials.' });
+});
+
+// ==========================================
+// RESTful CRUD ROUTE ENGINES
+// ==========================================
 app.get('/tasks', async (req: Request, res: Response) => {
   try {
     const limitQuery = parseInt(req.query.limit as string) || 10;
     const tasks = await Task.find().sort({ createdAt: -1 }).limit(limitQuery);
     res.json(tasks);
   } catch (err) {
-    console.error('Error fetching schemas:', err);
     res.status(500).json({ error: 'Failed to extract database entries.' });
   }
 });
 
-// 2. CREATE A NEW TASK
 app.post('/tasks', async (req: Request, res: Response) => {
   try {
     const { title, description, status, priority, dueDate, category } = req.body;
-    
-    const newTask = new Task({
-      title,
-      description,
-      status,
-      priority,
-      dueDate,
-      category
-    });
-
+    const newTask = new Task({ title, description, status, priority, dueDate, category });
     await newTask.save();
     res.status(201).json(newTask);
   } catch (err: any) {
-    console.error('Error creating schema entry:', err);
-    res.status(400).json({ error: err.message || 'Payload rejected by backend guards.' });
+    res.status(400).json({ error: err.message || 'Payload rejected.' });
   }
 });
 
-// 3. UPDATE AN EXISTING TASK (The missing piece solving your error!)
 app.put('/tasks/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { title, description, status, priority, dueDate, category } = req.body;
-
-    // Finds document by _id, pushes update payload, validates changes, returns new document
-    const updatedTask = await Task.findByIdAndUpdate(
-      id,
-      { title, description, status, priority, dueDate, category },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedTask) {
-      return res.status(404).json({ error: 'Task entry matching targeted ID was not found.' });
-    }
-
+    const updatedTask = await Task.findByIdAndUpdate(id, { title, description, status, priority, dueDate, category }, { new: true, runValidators: true });
+    if (!updatedTask) return res.status(404).json({ error: 'Task not found.' });
     res.json(updatedTask);
   } catch (err: any) {
-    console.error('Backend Error on PUT handler:', err);
-    res.status(400).json({ error: err.message || 'Failed to modify task parameters.' });
+    res.status(400).json({ error: err.message || 'Update failed.' });
   }
 });
 
-// 4. PURGE/DELETE A TASK
 app.delete('/tasks/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const deletedTask = await Task.findByIdAndDelete(id);
-
-    if (!deletedTask) {
-      return res.status(404).json({ error: 'Task could not be mapped for deletion.' });
-    }
-
-    res.json({ message: 'Document purged from database successfully.', deletedTask });
+    if (!deletedTask) return res.status(404).json({ error: 'Task not found.' });
+    res.json({ message: 'Purged successfully.', deletedTask });
   } catch (err) {
-    console.error('Error on DELETE routing block:', err);
-    res.status(500).json({ error: 'Failed to drop record index from engine.' });
+    res.status(500).json({ error: 'Deletion failed.' });
   }
 });
 
-// ==========================================
-// START PIPELINE SERVER
-// ==========================================
-app.listen(PORT, () => {
-  console.log(`🌐 TaskFlow API engine online at http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🌐 TaskFlow API online at http://localhost:${PORT}`));

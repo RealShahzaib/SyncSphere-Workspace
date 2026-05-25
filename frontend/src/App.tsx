@@ -1,41 +1,59 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Layers, Sliders, Trash2, XCircle, PlusCircle, Calendar, 
-  AlertCircle, Folder, FolderPlus, Inbox, X, Sun, Moon, Users,
-  Grid, Trello, List, CheckCircle2, Circle, HelpCircle, Edit2, Activity, Clock
+  Layers, Sliders, Trash2, XCircle, PlusCircle, Calendar, LogOut, Lock, Mail,
+  AlertCircle, Folder, FolderPlus, Inbox, X, Sun, Moon, Users, LayoutDashboard,
+  Grid, Trello, List, CheckCircle2, Circle, HelpCircle, Edit2, Activity, Clock,
+  ChevronRight, ArrowUpRight, Check, Search, Filter, ShieldCheck, Database
 } from 'lucide-react';
 
 type ViewMode = 'grid' | 'kanban' | 'list' | 'calendar';
+type ActiveTab = 'dashboard' | 'create';
 
 interface ActivityLog {
   id: string;
   message: string;
   timestamp: string;
-  type: 'create' | 'update' | 'delete' | 'system';
+  type: 'create' | 'update' | 'delete' | 'system' | 'auth';
 }
 
 export default function App() {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [limit, setLimit] = useState<string>('10');
-  const [loading, setLoading] = useState<boolean>(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  // Authentication Core State
+  const [user, setUser] = useState<any>(() => {
+    const savedUser = localStorage.getItem('syncsphere_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
 
-  // Theme State
+  // Core App Layout Navigation States
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  
+  // Data State Arrays
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [limit, setLimit] = useState<string>('15');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+
+  // Dynamic Theme Controller
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const savedTheme = localStorage.getItem('taskflow_theme');
-    return savedTheme ? savedTheme === 'dark' : false;
+    return savedTheme ? savedTheme === 'dark' : true; // Default to sleek premium dark
   });
 
-  // Folders State
+  // Dynamic Multi-Workspace folders
   const [folders, setFolders] = useState<string[]>(() => {
     const saved = localStorage.getItem('taskflow_folders');
-    return saved ? JSON.parse(saved) : ['General Workspace', 'Development', 'Design Assets'];
+    return saved ? JSON.parse(saved) : ['General Workspace', 'Development', 'Design Assets', 'Marketing QA'];
   });
   const [activeFolder, setActiveFolder] = useState<string>('All Folders');
-  const [newFolderName, setNewFolderName] = useState<string>('');
-  const [showFolderInput, setShowFolderInput] = useState<boolean>(false);
+  const [newFolderInput, setNewFolderInput] = useState('');
+  const [showFolderModal, setShowFolderModal] = useState(false);
 
-  // Core Form Fields (Creation)
+  // Staging Control Forms (Task Blueprint Creation)
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('Todo');
@@ -43,78 +61,106 @@ export default function App() {
   const [dueDate, setDueDate] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('General Workspace');
 
-  // Edit Mode States
+  // Interactive UI Overlays and Modals Modifiers
   const [editingTask, setEditingTask] = useState<any | null>(null);
+  const [validationAlert, setValidationAlert] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: string; title: string }>({ open: false, id: '', title: '' });
 
-  // Activity Feed Logging State
+  // High Fidelity Streaming Logs Tracker
   const [activities, setActivities] = useState<ActivityLog[]>(() => {
     const savedLogs = localStorage.getItem('syncsphere_logs');
     return savedLogs ? JSON.parse(savedLogs) : [
-      { id: '1', message: 'SyncSphere Workspace initialized successfully.', timestamp: new Date().toLocaleTimeString(), type: 'system' }
+      { id: 'init-1', message: 'System core operational framework loaded.', timestamp: '12:00 AM', type: 'system' }
     ];
   });
 
-  // Interactive UI Modal/Toast States
-  const [validationAlert, setValidationAlert] = useState<string | null>(null);
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: string; title: string }>({
-    open: false,
-    id: '',
-    title: ''
-  });
+  // Global Sync Synchronization Subsystems
+  useEffect(() => { localStorage.setItem('taskflow_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+  useEffect(() => { localStorage.setItem('taskflow_folders', JSON.stringify(folders)); }, [folders]);
+  useEffect(() => { localStorage.setItem('syncsphere_logs', JSON.stringify(activities)); }, [activities]);
 
-  // Persist Theme choices
-  useEffect(() => {
-    localStorage.setItem('taskflow_theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
+  // Flash Feedback Controller Trigger
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
-  // Persist Folders choice
-  useEffect(() => {
-    localStorage.setItem('taskflow_folders', JSON.stringify(folders));
-  }, [folders]);
-
-  // Persist Activity Logs
-  useEffect(() => {
-    localStorage.setItem('syncsphere_logs', JSON.stringify(activities));
-  }, [activities]);
-
-  const logActivity = (message: string, type: 'create' | 'update' | 'delete' | 'system') => {
+  const logActivity = (message: string, type: 'create' | 'update' | 'delete' | 'system' | 'auth') => {
     const newLog: ActivityLog = {
-      id: Math.random().toString(),
+      id: Math.random().toString(36).substring(2, 9),
       message,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       type
     };
-    setActivities(prev => [newLog, ...prev.slice(0, 19)]); // Keep last 20 operations
+    setActivities(prev => [newLog, ...prev.slice(0, 25)]);
   };
 
+  // Secure Auth Microservice Pipeline Gateway Handshake
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationAlert(null);
+    setAuthLoading(true);
+    
+    // Aesthetic simulated loading delay for secure pipeline visualization
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setUser(data.user);
+        localStorage.setItem('syncsphere_user', JSON.stringify(data.user));
+        logActivity(`${data.user.name} established encrypted session handshake.`, 'auth');
+        triggerToast(`Welcome back, ${data.user.name.split(' ')[0]}`);
+      } else {
+        setValidationAlert(data.error || 'Security credentials handshake rejected.');
+        logActivity(`Failed login authentication vector attempt from context: ${loginEmail}`, 'system');
+      }
+    } catch {
+      setValidationAlert('Authentication microservice offline or local connection refused.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logActivity(`Session context severed for user payload ${user?.name || ''}`, 'auth');
+    setUser(null);
+    localStorage.removeItem('syncsphere_user');
+  };
+
+  // Data Fetching Tunnel Pipeline
   const fetchTasks = async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const response = await fetch(`http://localhost:5000/tasks?limit=${limit}`);
       const data = await response.json();
       setTasks(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Local sync connection dropped.");
-      setValidationAlert("Network Fault: Could not connect to your backend API server.");
+    } catch {
+      setValidationAlert("Telemetry pipeline fault: Could not query local data engine clusters.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, [limit]);
+  useEffect(() => { fetchTasks(); }, [limit, user]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationAlert(null);
-
-    if (!title.trim() || title.length < 5) {
-      setValidationAlert("Validation Fault: Task Title must contain at least 5 characters.");
+    if (title.trim().length < 5) {
+      setValidationAlert("Schema Constraint Error: Task Title requires a minimum of 5 characters.");
       return;
     }
-    if (!description.trim() || description.length < 10) {
-      setValidationAlert("Validation Fault: Operational Details must contain at least 10 characters.");
+    if (description.trim().length < 10) {
+      setValidationAlert("Schema Constraint Error: Task Description requires a minimum of 10 characters.");
       return;
     }
 
@@ -123,690 +169,807 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          title: title.trim(), 
-          description: description.trim(), 
+          title, 
+          description, 
           status, 
           priority, 
           dueDate: dueDate || undefined, 
           category: selectedFolder 
         }),
       });
+      if (!response.ok) throw new Error();
       
-      if (!response.ok) throw new Error("Payload rejected by backend guards.");
+      logActivity(`Created task metadata block "${title}" within context: ${selectedFolder}.`, 'create');
+      triggerToast("Task structure successfully pipelined to database cluster");
       
-      logActivity(`Created task card "${title.trim()}" inside ${selectedFolder}.`, 'create');
-      setTitle('');
-      setDescription('');
-      setDueDate('');
+      // Reset Form Blueprints
+      setTitle(''); setDescription(''); setDueDate(''); setStatus('Todo'); setPriority('Medium');
+      setActiveTab('dashboard');
       fetchTasks();
-    } catch (err) {
-      setValidationAlert("Database entry rejection: Please check server status logs.");
+    } catch {
+      setValidationAlert("Transaction rollback: Database rejected schema compilation.");
     }
   };
 
   const handleUpdateTask = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!editingTask) return;
-
-  // MongoDB uses _id by default. Ensure we are parsing it cleanly.
-  const targetId = editingTask._id || editingTask.id;
-  
-  if (!targetId) {
-    setValidationAlert("Validation Exception: Critical target identifier missing.");
-    return;
-  }
-
-  try {
-    const response = await fetch(`http://localhost:5000/tasks/${targetId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: editingTask.title,
-        description: editingTask.description,
-        status: editingTask.status,
-        priority: editingTask.priority,
-        dueDate: editingTask.dueDate,
-        category: editingTask.category || 'General Workspace'
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Update transmission rejected.");
+    e.preventDefault();
+    if (!editingTask) return;
+    const targetId = editingTask._id || editingTask.id;
+    try {
+      const response = await fetch(`http://localhost:5000/tasks/${targetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingTask)
+      });
+      if (!response.ok) throw new Error();
+      
+      logActivity(`Modified properties for payload sequence "${editingTask.title}".`, 'update');
+      triggerToast("Task schema synchronized successfully");
+      setEditingTask(null);
+      fetchTasks();
+    } catch {
+      setValidationAlert("Dynamic cluster mutation failed.");
     }
-
-    logActivity(`Modified parameters for "${editingTask.title}" -> Status: [${editingTask.status}].`, 'update');
-    setEditingTask(null);
-    setValidationAlert(null); // Clear any lingering exception UI states
-    fetchTasks();             // Refresh UI pipeline with fresh database document streams
-  } catch (err: any) {
-    console.error("Frontend routing catch block triggered:", err);
-    setValidationAlert(`Failed to commit updates: ${err.message || 'Check backend console logs.'}`);
-  }
-};
-
-  const triggerDeleteConfirmation = (task: any) => {
-    const targetId = task.id || task._id;
-    if (!targetId) {
-      setValidationAlert("Error: Task ID could not be cleanly targeted.");
-      return;
-    }
-    setDeleteModal({ open: true, id: targetId, title: task.title });
   };
 
   const handleConfirmedDelete = async () => {
-    const targetId = deleteModal.id;
-    if (!targetId) return;
-
+    if (!deleteModal.id) return;
     try {
-      const response = await fetch(`http://localhost:5000/tasks/${targetId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(`http://localhost:5000/tasks/${deleteModal.id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error();
       
-      if (!response.ok) throw new Error("Failed execution");
-      
-      logActivity(`Purged index entry record "${deleteModal.title}" from MongoDB.`, 'delete');
+      logActivity(`Purged configuration block reference: "${deleteModal.title}"`, 'delete');
+      triggerToast("Task object successfully scrubbed from local memory array");
       setDeleteModal({ open: false, id: '', title: '' });
       fetchTasks();
-    } catch (err) {
-      setValidationAlert("Failed to erase record from MongoDB engine index.");
+    } catch {
+      setValidationAlert("Storage drop operation rejected by cluster execution guards.");
     }
   };
 
   const handleAddFolder = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanName = newFolderName.trim();
-    if (cleanName && !folders.includes(cleanName)) {
-      setFolders([...folders, cleanName]);
-      setSelectedFolder(cleanName);
-      setNewFolderName('');
-      setShowFolderInput(false);
-      logActivity(`Provisioned brand new folder container segment "${cleanName}".`, 'system');
+    if (newFolderInput.trim() && !folders.includes(newFolderInput.trim())) {
+      const folderName = newFolderInput.trim();
+      setFolders([...folders, folderName]);
+      logActivity(`Allocated new tracking workspace partition container: ${folderName}`, 'system');
+      setNewFolderInput('');
+      setShowFolderModal(false);
+      setSelectedFolder(folderName);
     }
   };
 
-  const handleRemoveFolder = (folderName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updatedFolders = folders.filter(f => f !== folderName);
-    setFolders(updatedFolders);
-    logActivity(`Decommissioned cluster workspace tracking segment "${folderName}".`, 'delete');
-    
-    if (activeFolder === folderName) setActiveFolder('All Folders');
-    if (selectedFolder === folderName) setSelectedFolder(updatedFolders[0] || 'General Workspace');
+  // High Precision Filtration Engine Processing
+  const filteredTasks = tasks.filter(task => {
+    const matchesFolder = activeFolder === 'All Folders' || task.category === activeFolder;
+    const matchesStatus = statusFilter === 'All' || task.status === statusFilter;
+    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          task.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFolder && matchesStatus && matchesSearch;
+  });
+
+  const getPriorityStyle = (p: string) => {
+    switch (p) {
+      case 'High': return 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400';
+      case 'Medium': return 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400';
+      default: return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400';
+    }
   };
 
-  const filteredTasks = activeFolder === 'All Folders'
-    ? tasks
-    : tasks.filter(t => t.category === activeFolder);
-
-  const getPriorityBadge = (priority: string) => {
-    const styles = priority === 'High' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
-                   priority === 'Medium' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                   'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
-    return <span className={`text-[8px] px-2.5 py-0.5 rounded-lg font-black tracking-widest uppercase border-2 ${styles}`}>{priority}</span>;
+  const getStatusColor = (s: string) => {
+    switch (s) {
+      case 'Done': return 'text-emerald-500';
+      case 'In Progress': return 'text-cyan-500';
+      default: return 'text-slate-400';
+    }
   };
 
-  return (
-    <div className={`min-h-screen font-sans antialiased selection:bg-emerald-500/10 transition-colors duration-300 ${
-      darkMode ? 'bg-[#0B1329] text-slate-100' : 'bg-slate-50 text-slate-900'
-    }`}>
-      
-      {/* System Warning Toast Banner */}
-      {validationAlert && (
-        <div className={`fixed top-6 right-6 z-50 max-w-md w-full border-l-4 border-rose-500 shadow-xl p-4 rounded-r-xl flex items-start gap-3 border ${
-          darkMode ? 'bg-[#1C2541] border-slate-700' : 'bg-white border-slate-200'
-        } animate-slide-up`}>
-          <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h4 className="text-xs font-bold uppercase tracking-wider">System Exception</h4>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">{validationAlert}</p>
-          </div>
-          <button onClick={() => setValidationAlert(null)} className="text-slate-400 hover:text-rose-500 transition-colors">
-            <XCircle size={16} />
+  // =========================================================================
+  // VIEW INTERFACE 1: HIGH FIDELITY GEOMETRIC GLASSMORPHISM LOGIN GATE
+  // =========================================================================
+  if (!user) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center font-sans antialiased relative overflow-hidden transition-colors duration-500 ${darkMode ? 'bg-[#060B26] text-white' : 'bg-slate-50 text-slate-900'}`}>
+        
+        {/* Futuristic Aesthetic Dynamic Geometric Grid Overlays */}
+        <div className="absolute inset-0 z-0 pointer-events-none opacity-20 dark:opacity-40">
+          <div className="absolute -top-[30%] -left-[20%] w-[700px] h-[700px] bg-emerald-500/20 rounded-full filter blur-[120px] animate-pulse"></div>
+          <div className="absolute -bottom-[20%] -right-[10%] w-[600px] h-[600px] bg-cyan-500/20 rounded-full filter blur-[140px]"></div>
+          <div className="w-full h-full bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+        </div>
+
+        <div className="absolute top-6 right-6 z-10">
+          <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 shadow-md flex items-center gap-2 font-bold text-xs uppercase tracking-wider ${darkMode ? 'bg-[#121B3A] border-slate-700 text-amber-400' : 'bg-white border-slate-200 text-slate-700'}`}>
+            {darkMode ? <><Sun size={14} /> Light Context</> : <><Moon size={14} /> Dark Context</>}
           </button>
+        </div>
+
+        <div className={`w-full max-w-lg mx-4 border-2 rounded-2xl p-10 relative z-10 transition-all duration-500 transform hover:translate-y-[-2px] ${darkMode ? 'bg-[#0E1738]/80 border-slate-800/80 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl' : 'bg-white border-slate-300/90 shadow-2xl'}`}>
+          <div className="absolute top-0 left-0 w-full h-[5px] bg-gradient-to-right from-emerald-500 to-cyan-500"></div>
+          
+          <div className="text-center mb-10">
+            <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-slate-950 mb-4 shadow-lg shadow-emerald-500/20 transform hover:rotate-6 transition-transform duration-300">
+              <Layers size={28} />
+            </div>
+            <h2 className="text-2xl font-black uppercase tracking-wider bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-500 bg-clip-text text-transparent">
+              SyncSphere Node Core
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-1 uppercase font-black tracking-widest flex items-center justify-center gap-1">
+              <ShieldCheck size={12} className="text-emerald-500" /> Infrastructure Access Control Gate
+            </p>
+          </div>
+
+          {validationAlert && (
+            <div className="mb-6 p-4 bg-rose-500/10 border-2 border-rose-500/20 rounded-xl text-xs text-rose-500 dark:text-rose-400 flex items-start gap-3 animate-headShake">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="font-black uppercase tracking-wider block mb-0.5">Handshake Interrupted</span>
+                <span>{validationAlert}</span>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Identity Context Vector (Email)</label>
+              <div className="relative group">
+                <Mail size={16} className="absolute left-4 top-4 text-slate-400 transition-colors group-focus-within:text-emerald-400" />
+                <input 
+                  type="email" 
+                  required 
+                  value={loginEmail} 
+                  onChange={(e) => setLoginEmail(e.target.value)} 
+                  placeholder="shahzaib@syncsphere.com" 
+                  className={`w-full border-2 rounded-xl pl-12 pr-4 py-3.5 text-xs focus:outline-none font-medium transition-all duration-300 ${darkMode ? 'bg-[#151F45] border-slate-700/80 text-white focus:border-emerald-500/80 shadow-inner' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-500 focus:bg-white'}`} 
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Encrypted Authorization Password</label>
+              <div className="relative group">
+                <Lock size={16} className="absolute left-4 top-4 text-slate-400 transition-colors group-focus-within:text-emerald-400" />
+                <input 
+                  type="password" 
+                  required 
+                  value={loginPassword} 
+                  onChange={(e) => setLoginPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  className={`w-full border-2 rounded-xl pl-12 pr-4 py-3.5 text-xs focus:outline-none font-medium transition-all duration-300 ${darkMode ? 'bg-[#151F45] border-slate-700/80 text-white focus:border-emerald-500/80 shadow-inner' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-500 focus:bg-white'}`} 
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={authLoading}
+              className="w-full font-black uppercase tracking-widest py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-slate-950 transition-all duration-300 text-xs shadow-lg shadow-emerald-500/10 active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {authLoading ? (
+                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>Establish Secure Session <ArrowUpRight size={14} /></>
+              )}
+            </button>
+          </form>
+
+          <div className={`mt-8 pt-6 border-t-2 border-dashed text-center text-[10px] font-black uppercase tracking-widest ${darkMode ? 'border-slate-800 text-slate-500' : 'border-slate-200 text-slate-400'}`}>
+            Developer Authorization Parameter: <span className="text-emerald-500 font-mono ml-1">admin123</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW INTERFACE 2: THE PREMIUM SYNCSPHERE PRODUCTION ENVIRONMENT WORKSPACE
+  // =========================================================================
+  return (
+    <div className={`min-h-screen font-sans antialiased transition-colors duration-500 ${darkMode ? 'bg-[#060B26] text-slate-100' : 'bg-[#F4F6FA] text-slate-900'}`}>
+      
+      {/* Toast Alert Flash Popups */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white dark:bg-emerald-500 dark:text-slate-950 px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-black uppercase tracking-wider animate-slideInRight border border-white/10">
+          <CheckCircle2 size={16} /> <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Styled Top Branding Navbar Header */}
-      <header className={`border-b-2 bg-opacity-90 sticky top-0 backdrop-blur-md z-30 shadow-sm transition-colors ${
-        darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-200'
-      }`}>
+      {/* Premium Dashboard Frame Global Header Control Node */}
+      <header className={`border-b-2 sticky top-0 backdrop-blur-md z-40 transition-all duration-500 ${darkMode ? 'bg-[#0E1738]/90 border-slate-800/90 shadow-[0_4px_20px_rgba(0,0,0,0.3)]' : 'bg-white/95 border-slate-200 shadow-sm'}`}>
         <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-2xl shadow-md ${darkMode ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-white'}`}>
+          
+          <div className="flex items-center gap-4 group">
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-slate-950 shadow-md shadow-emerald-500/10 transition-transform group-hover:rotate-6 duration-300">
               <Layers size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-black uppercase tracking-wider">SyncSphere</h1>
-              <div className="flex items-center gap-2 mt-0.5 text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                <Users size={11} className="text-emerald-500" />
-                <span>Engineered By:</span>
-                <span className={darkMode ? 'text-slate-200' : 'text-slate-700'}>Shahzaib Shah</span>
-                <span className="text-emerald-500">&amp;</span>
-                <span className={darkMode ? 'text-slate-200' : 'text-slate-700'}>Syed Ahmed Raza</span>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black uppercase tracking-wider bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">SyncSphere</h1>
+                <span className="text-[8px] px-2 py-0.5 rounded-full font-black border tracking-widest bg-emerald-500/10 border-emerald-500/20 text-emerald-500">PROD</span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[9px] uppercase tracking-wider text-slate-400 font-black">
+                <Users size={12} className="text-cyan-500" />
+                <span>Console Core:</span> 
+                <span className={`font-mono ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{user.name} ({user.role})</span>
               </div>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2.5 rounded-xl border-2 transition-all shadow-sm ${
-                darkMode ? 'bg-[#1C2541] border-slate-700 text-amber-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400'
-              }`}
-            >
-              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-
-            <div className={`flex items-center gap-2.5 border-2 px-3.5 py-2 rounded-xl ${
-              darkMode ? 'bg-[#1C2541] border-slate-700' : 'bg-slate-100 border-slate-200'
-            }`}>
-              <Sliders size={13} className="text-slate-400" />
-              <select
-                value={limit}
-                onChange={(e) => setLimit(e.target.value)}
-                className={`border rounded-lg text-xs font-bold py-0.5 px-2 focus:outline-none focus:border-emerald-500 cursor-pointer ${
-                  darkMode ? 'bg-[#0B1329] border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'
-                }`}
+            {/* Nav Switch Router Panel */}
+            <nav className={`flex p-1 rounded-xl border-2 transition-colors duration-300 ${darkMode ? 'bg-[#121B3A] border-slate-800' : 'bg-slate-200/70 border-slate-300/60'}`}>
+              <button 
+                onClick={() => setActiveTab('dashboard')} 
+                className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all duration-300 ${activeTab === 'dashboard' ? 'bg-slate-950 text-white dark:bg-gradient-to-r dark:from-emerald-400 dark:to-cyan-400 dark:text-slate-950 shadow-lg' : 'text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
               >
-                <option value="5">5 Rows</option>
-                <option value="10">10 Rows</option>
-                <option value="20">20 Rows</option>
-              </select>
-            </div>
+                <LayoutDashboard size={14} /> Grid Panel
+              </button>
+              <button 
+                onClick={() => setActiveTab('create')} 
+                className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all duration-300 ${activeTab === 'create' ? 'bg-slate-950 text-white dark:bg-gradient-to-r dark:from-emerald-400 dark:to-cyan-400 dark:text-slate-950 shadow-lg' : 'text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+              >
+                <PlusCircle size={14} /> Stage Blueprint
+              </button>
+            </nav>
+
+            <div className={`w-[2px] h-8 ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
+
+            <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl border-2 transition-all duration-300 ${darkMode ? 'bg-[#121B3A] border-slate-700 text-amber-400 hover:bg-[#19244E]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+              {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+            
+            <button onClick={handleLogout} className="p-3 rounded-xl border-2 border-rose-500/20 bg-rose-500/10 text-rose-500 dark:text-rose-400 hover:bg-rose-500 hover:text-white transition-all duration-300 shadow-sm">
+              <LogOut size={14} />
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        
-        {/* Dynamic Folders Bar Section */}
-        <div className={`mb-6 flex flex-wrap items-center gap-2 border-b-2 pb-5 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-          <button
-            onClick={() => setActiveFolder('All Folders')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold tracking-wider transition-all uppercase flex items-center gap-2 border-2 ${
-              activeFolder === 'All Folders'
-                ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-md'
-                : darkMode ? 'bg-[#1C2541] text-slate-300 border-slate-700 hover:border-slate-500' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
-            }`}
-          >
-            <Inbox size={13} />
-            All Storage
-          </button>
-
-          {folders.map(f => (
-            <div
-              key={f}
-              onClick={() => setActiveFolder(f)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold tracking-wider transition-all uppercase flex items-center gap-2.5 border-2 cursor-pointer group ${
-                activeFolder === f
-                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100 shadow-md'
-                  : darkMode ? 'bg-[#1C2541] text-slate-300 border-slate-700 hover:border-slate-500' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
-              }`}
-            >
-              <Folder size={13} className={activeFolder === f ? "text-emerald-400 dark:text-emerald-600" : "text-slate-400"} />
-              <span>{f}</span>
-              
-              <button
-                onClick={(e) => handleRemoveFolder(f, e)}
-                className="p-0.5 rounded hover:bg-rose-500 hover:text-white transition-colors ml-1 text-slate-400"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
-
-          <button 
-            onClick={() => setShowFolderInput(!showFolderInput)}
-            className={`px-3 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border-2 shadow-sm ${
-              darkMode ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-            }`}
-          >
-            <FolderPlus size={13} />
-            New Directory
-          </button>
-
-          {showFolderInput && (
-            <form onSubmit={handleAddFolder} className="flex items-center gap-2 animate-fade-in ml-2">
-              <input
-                type="text"
-                required
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="Folder identity..."
-                className={`border-2 rounded-xl text-xs px-3 py-2 focus:outline-none focus:border-emerald-500 ${
-                  darkMode ? 'bg-[#1C2541] border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-900'
-                }`}
-              />
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold uppercase tracking-wider transition-colors shadow-sm">
-                Add
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* Layout Mode Navigation Bar */}
-        <div className="mb-8 flex flex-wrap items-center justify-start gap-1">
-          {(['grid', 'kanban', 'list', 'calendar'] as ViewMode[]).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setViewMode(mode)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold tracking-wide uppercase flex items-center gap-2 border-2 transition-all ${
-                viewMode === mode
-                  ? 'bg-slate-900 border-slate-900 text-white dark:bg-slate-100 dark:border-slate-100 dark:text-slate-950 shadow-sm'
-                  : darkMode ? 'bg-[#111A31] border-slate-800 text-slate-400 hover:border-slate-600' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
-              }`}
-            >
-              {mode === 'grid' && <Grid size={13} />}
-              {mode === 'kanban' && <Trello size={13} />}
-              {mode === 'list' && <List size={13} />}
-              {mode === 'calendar' && <Calendar size={13} />}
-              <span className="capitalize">{mode} View</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Dashboard 3-Column Content Map Block */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
           
-          {/* Column 1: Record Creation Segment Box */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className={`border-2 rounded-2xl p-6 shadow-md relative overflow-hidden transition-colors ${
-              darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-300'
-            }`}>
-              <div className={`absolute top-0 left-0 w-full h-[4px] ${darkMode ? 'bg-emerald-500' : 'bg-slate-900'}`}></div>
-              <h2 className="text-xs font-black uppercase tracking-widest mb-6 flex items-center gap-2">
-                <PlusCircle size={15} className="text-emerald-500" />
-                Initialize Entry
-              </h2>
+          {/* Main Display Workstation Screen Area */}
+          <div className="lg:col-span-3 space-y-6">
+            {activeTab === 'dashboard' ? (
+              <div className="space-y-6">
+                
+                {/* Filtration and Control Subsystem Block */}
+                <div className={`border-2 rounded-2xl p-6 transition-all duration-500 ${darkMode ? 'bg-[#0E1738] border-slate-800/80 shadow-md' : 'bg-white border-slate-300/80 shadow-sm'}`}>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    
+                    {/* Search Field Vector */}
+                    <div className="relative flex-1 group">
+                      <Search size={14} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-emerald-400" />
+                      <input 
+                        type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Filter system schema payloads by keyword lookup..." 
+                        className={`w-full border-2 rounded-xl pl-11 pr-4 py-2.5 text-xs focus:outline-none transition-all duration-300 ${darkMode ? 'bg-[#151F45] border-slate-700/80 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-cyan-500 focus:bg-white'}`}
+                      />
+                    </div>
 
-              <form onSubmit={handleCreateTask} className="space-y-4">
-                <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Task Label</label>
-                  <input
-                    type="text"
-                    required
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g. Clean production logs"
-                    className={`w-full border-2 rounded-xl px-4 py-3 text-xs focus:outline-none transition-all ${
-                      darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Execution Details</label>
-                  <textarea
-                    required
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Provide description directives..."
-                    rows={3}
-                    className={`w-full border-2 rounded-xl px-4 py-3 text-xs focus:outline-none transition-all resize-none ${
-                      darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                    }`}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Status</label>
-                    <select value={status} onChange={(e) => setStatus(e.target.value)} className={`w-full border-2 rounded-xl p-3 text-xs ${
-                      darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                    }`}>
-                      <option value="Todo">Todo</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Done">Done</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Priority</label>
-                    <select value={priority} onChange={(e) => setPriority(e.target.value)} className={`w-full border-2 rounded-xl p-3 text-xs ${
-                      darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                    }`}>
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Target Workspace</label>
-                  <select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)} className={`w-full border-2 rounded-xl p-3 text-xs ${
-                    darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                  }`}>
-                    {folders.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1.5">Target Due Date</label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className={`w-full border-2 rounded-xl px-4 py-3 text-xs ${
-                      darkMode ? 'bg-[#1C2541] border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                    }`}
-                  />
-                </div>
-
-                <button type="submit" className={`w-full mt-2 font-bold uppercase tracking-wider py-3.5 rounded-xl transition-all shadow-md text-xs ${
-                  darkMode ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950' : 'bg-slate-900 hover:bg-slate-800 text-white'
-                }`}>
-                  Save Document State
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* Column 2 & 3: Interactive Workboards Pipeline View Router */}
-          <div className="lg:col-span-2">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-28 space-y-3">
-                <div className={`w-6 h-6 border-2 border-t-transparent rounded-full animate-spin ${darkMode ? 'border-emerald-400' : 'border-slate-900'}`}></div>
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold animate-pulse">Querying server layers...</p>
-              </div>
-            ) : filteredTasks.length === 0 ? (
-              <div className={`border-2 border-dashed rounded-2xl text-center py-24 shadow-sm ${
-                darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-300'
-              }`}>
-                <p className="text-slate-400 text-xs font-bold">Active Workspace Segment Empty</p>
-              </div>
-            ) : (
-              <>
-                {/* GRID VIEW */}
-                {viewMode === 'grid' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
-                    {filteredTasks.map((task) => (
-                      <div key={task.id || task._id} className={`border-2 rounded-2xl p-5 shadow-sm flex flex-col justify-between relative group ${
-                        darkMode ? 'bg-[#111A31] border-slate-800 hover:border-slate-600' : 'bg-white border-slate-300 hover:border-slate-500'
-                      }`}>
-                        <div>
-                          <div className="flex items-center justify-between mb-3.5">
-                            {getPriorityBadge(task.priority)}
-                            <span className={`text-[9px] border-2 px-2 py-0.5 rounded-md font-bold uppercase ${
-                              darkMode ? 'bg-[#1C2541] border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'
-                            }`}>{task.status}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-slate-400 text-[9px] uppercase font-bold tracking-wider mb-2">
-                            <Folder size={11} className="text-emerald-500" />
-                            <span>{task.category || 'General Workspace'}</span>
-                          </div>
-                          <h3 className="text-sm font-bold mb-1.5 tracking-wide line-clamp-1">{task.title}</h3>
-                          <p className="text-slate-400 text-xs leading-relaxed mb-4 line-clamp-2">{task.description}</p>
-                        </div>
-                        <div className={`pt-3.5 border-t-2 flex items-center justify-between text-[9px] text-slate-400 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                          <div className="flex flex-col gap-0.5">
-                            <span>Logged: {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : 'N/A'}</span>
-                            {task.dueDate && (
-                              <span className={`font-bold flex items-center gap-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                                <Calendar size={10} className="text-emerald-500" />
-                                Target: {new Date(task.dueDate).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button
-                              onClick={() => setEditingTask(task)}
-                              className={`p-2 rounded-xl border-2 transition-all text-slate-400 hover:text-emerald-400 hover:border-emerald-500 ${darkMode ? 'bg-[#1C2541] border-slate-700' : 'bg-slate-50 border-slate-200'}`}
-                            >
-                              <Edit2 size={11} />
-                            </button>
-                            <button
-                              onClick={() => triggerDeleteConfirmation(task)}
-                              className={`p-2 rounded-xl border-2 transition-all text-slate-400 hover:text-rose-400 hover:border-rose-500 ${darkMode ? 'bg-[#1C2541] border-slate-700' : 'bg-slate-50 border-slate-200'}`}
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Status Filter Component dropdown wrapper */}
+                      <div className="flex items-center gap-2">
+                        <Filter size={12} className="text-slate-400" />
+                        <select 
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                          className={`border-2 rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wider focus:outline-none transition-colors ${darkMode ? 'bg-[#151F45] border-slate-700 text-slate-200 focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-800'}`}
+                        >
+                          <option value="All">All Statuses</option>
+                          <option value="Todo">Todo</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Done">Done</option>
+                        </select>
                       </div>
-                    ))}
-                  </div>
-                )}
 
-                {/* KANBAN BOARD */}
-                {viewMode === 'kanban' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-fade-in items-start">
-                    {['Todo', 'In Progress', 'Done'].map(columnStatus => {
-                      const statusTasks = filteredTasks.filter(t => t.status === columnStatus);
-                      return (
-                        <div key={columnStatus} className={`border-2 rounded-2xl p-4 flex flex-col ${darkMode ? 'bg-[#111A31]/50 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
-                          <div className="flex items-center justify-between mb-4 pb-2 border-b-2 border-dashed border-slate-300 dark:border-slate-700">
-                            <span className="text-[10px] uppercase font-black text-slate-400 flex items-center gap-2">
-                              {columnStatus === 'Todo' && <Circle size={12} className="text-amber-500" />}
-                              {columnStatus === 'In Progress' && <Sliders size={12} className="text-blue-500" />}
-                              {columnStatus === 'Done' && <CheckCircle2 size={12} className="text-emerald-500" />}
-                              {columnStatus}
-                            </span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${darkMode ? 'bg-[#1C2541]' : 'bg-white'} border border-slate-300 dark:border-slate-700`}>{statusTasks.length}</span>
-                          </div>
-                          <div className="space-y-3 min-h-[250px]">
-                            {statusTasks.map(task => (
-                              <div key={task.id || task._id} className={`border-2 rounded-xl p-4 shadow-sm ${darkMode ? 'bg-[#111A31] border-slate-700' : 'bg-white border-slate-300'}`}>
-                                <div className="mb-2">{getPriorityBadge(task.priority)}</div>
-                                <h4 className="text-xs font-bold mb-1 line-clamp-1">{task.title}</h4>
-                                <p className="text-[11px] text-slate-400 mb-3 line-clamp-2 leading-relaxed">{task.description}</p>
-                                <div className="flex items-center justify-between text-[9px] text-slate-500 pt-2 border-t border-slate-200 dark:border-slate-800">
-                                  <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-500"><Edit2 size={10} /></button>
-                                  <button onClick={() => triggerDeleteConfirmation(task)} className="text-slate-400 hover:text-rose-500"><Trash2 size={10} /></button>
+                      {/* Display Mode Controller */}
+                      <div className={`flex p-1 rounded-xl border ${darkMode ? 'bg-[#151F45] border-slate-700' : 'bg-slate-100 border-slate-300/70'}`}>
+                        {([
+                          { mode: 'grid', icon: <Grid size={13} /> },
+                          { mode: 'kanban', icon: <Trello size={13} /> },
+                          { mode: 'list', icon: <List size={13} /> },
+                          { mode: 'calendar', icon: <Calendar size={13} /> }
+                        ] as { mode: ViewMode, icon: React.ReactNode }[]).map(({ mode, icon }) => (
+                          <button 
+                            key={mode} 
+                            onClick={() => setViewMode(mode)} 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-1.5 transition-all duration-300 ${viewMode === mode ? 'bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                          >
+                            {icon} <span className="hidden sm:inline text-[9px]">{mode}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Folder Array Segments */}
+                  <div className={`mt-6 pt-5 border-t-2 flex flex-wrap items-center gap-2 ${darkMode ? 'border-slate-800/80' : 'border-slate-200/60'}`}>
+                    <button 
+                      onClick={() => setActiveFolder('All Folders')} 
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase border-2 flex items-center gap-1.5 transition-all duration-300 ${activeFolder === 'All Folders' ? 'bg-gradient-to-r from-emerald-400 to-cyan-500 text-slate-950 border-transparent shadow-md' : 'bg-transparent text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-slate-200'}`}
+                    >
+                      <Inbox size={12} /> All Storage Registers
+                    </button>
+                    
+                    {folders.map(folderName => (
+                      <button 
+                        key={folderName} 
+                        onClick={() => setActiveFolder(folderName)} 
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase border-2 flex items-center gap-1.5 transition-all duration-300 ${activeFolder === folderName ? 'bg-slate-950 text-white border-slate-950 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100 shadow-md' : 'text-slate-400 border-transparent hover:bg-slate-200/50 dark:hover:bg-slate-800/40'}`}
+                      >
+                        <Folder size={12} className="text-cyan-500" /> {folderName}
+                      </button>
+                    ))}
+
+                    <button 
+                      onClick={() => setShowFolderModal(true)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase border-2 border-dashed border-slate-400 dark:border-slate-700 text-slate-400 hover:text-emerald-500 hover:border-emerald-500/40 transition-colors ml-auto flex items-center gap-1`}
+                    >
+                      <FolderPlus size={12} /> Partition
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subsystem State Handler Renderers */}
+                {loading ? (
+                  <div className="text-center py-24 border-2 border-dashed rounded-2xl dark:border-slate-800 border-slate-300 flex flex-col items-center justify-center gap-3">
+                    <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs uppercase font-black tracking-widest text-slate-400 animate-pulse">Syncing dynamic data schema modules...</p>
+                  </div>
+                ) : filteredTasks.length === 0 ? (
+                  <div className="text-center py-24 border-2 border-dashed rounded-2xl dark:border-slate-800 border-slate-300 flex flex-col items-center justify-center text-slate-400">
+                    <Database size={24} className="mb-2 text-slate-500" />
+                    <p className="text-xs uppercase font-black tracking-widest">Null Index Return Frame</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1">No collections found matching specified parameters.</p>
+                  </div>
+                ) : (
+                  <div className="transition-all duration-500">
+                    
+                    {/* VIEW ARCHITECTURE 1: PREMIUM GRID FRAME MATRICES */}
+                    {viewMode === 'grid' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        {filteredTasks.map((task) => (
+                          <div 
+                            key={task._id || task.id} 
+                            className={`border-2 rounded-2xl p-6 flex flex-col justify-between shadow-sm relative group transition-all duration-300 hover:shadow-lg hover:translate-y-[-2px] ${darkMode ? 'bg-[#0E1738] border-slate-800/80 hover:border-slate-700' : 'bg-white border-slate-300/80 hover:border-slate-400'}`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-4">
+                                {getPriorityBadge(task.priority)}
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`w-1.5 h-1.5 rounded-full bg-current ${getStatusColor(task.status)}`}></span>
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{task.status}</span>
                                 </div>
                               </div>
-                            ))}
+                              <h3 className={`text-sm font-black mb-1.5 group-hover:text-emerald-500 transition-colors truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{task.title}</h3>
+                              <p className="text-slate-400 text-xs mb-6 line-clamp-3 leading-relaxed">{task.description}</p>
+                            </div>
+                            
+                            <div className={`pt-4 border-t-2 flex justify-between items-center ${darkMode ? 'border-slate-800/80' : 'border-slate-100'}`}>
+                              <div className="flex items-center gap-1.5 text-slate-400">
+                                <Folder size={11} className="text-cyan-500" />
+                                <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">{task.category}</span>
+                              </div>
+                              <div className="flex gap-2 text-slate-400">
+                                <button onClick={() => setEditingTask(task)} className="p-2 rounded-lg bg-slate-100 dark:bg-[#151F45] hover:text-emerald-400 transition-colors"><Edit2 size={12} /></button>
+                                <button onClick={() => setDeleteModal({ open: true, id: task._id || task.id, title: task.title })} className="p-2 rounded-lg bg-slate-100 dark:bg-[#151F45] hover:text-rose-400 transition-colors"><Trash2 size={12} /></button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* COMPACT LIST VIEW */}
-                {viewMode === 'list' && (
-                  <div className={`border-2 rounded-2xl overflow-hidden shadow-sm animate-fade-in ${darkMode ? 'border-slate-800 bg-[#111A31]' : 'border-slate-300 bg-white'}`}>
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className={`border-b-2 uppercase font-black text-[9px] tracking-widest text-slate-400 ${darkMode ? 'bg-[#161F38] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                          <th className="p-3.5">Label Ident</th>
-                          <th className="p-3.5">Priority</th>
-                          <th className="p-3.5">Status</th>
-                          <th className="p-3.5 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                        {filteredTasks.map(task => (
-                          <tr key={task.id || task._id} className={darkMode ? 'hover:bg-[#161F38]' : 'hover:bg-slate-50'}>
-                            <td className="p-3.5 font-bold tracking-wide truncate max-w-[150px]">{task.title}</td>
-                            <td className="p-3.5">{getPriorityBadge(task.priority)}</td>
-                            <td className="p-3.5">
-                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${darkMode ? 'bg-[#1C2541] border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>{task.status}</span>
-                            </td>
-                            <td className="p-3.5 text-right space-x-1.5">
-                              <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-500"><Edit2 size={12} /></button>
-                              <button onClick={() => triggerDeleteConfirmation(task)} className="text-slate-400 hover:text-rose-500"><Trash2 size={12} /></button>
-                            </td>
-                          </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      </div>
+                    )}
 
-                {/* CALENDAR METRIC VIEW */}
-                {viewMode === 'calendar' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
-                    {(() => {
-                      const datedTasks = filteredTasks.filter(t => t.dueDate);
-                      const nonDatedTasks = filteredTasks.filter(t => !t.dueDate);
-                      const groups: { [key: string]: any[] } = {};
-                      
-                      datedTasks.forEach(t => {
-                        const dateStr = new Date(t.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                        if (!groups[dateStr]) groups[dateStr] = [];
-                        groups[dateStr].push(t);
-                      });
-
-                      return (
-                        <>
-                          {Object.keys(groups).map(dateKey => (
-                            <div key={dateKey} className={`border-2 rounded-2xl p-4 flex flex-col ${darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-300'}`}>
-                              <div className="text-[10px] uppercase font-black text-emerald-500 tracking-wider mb-3 flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
-                                <Calendar size={11} /> {dateKey}
+                    {/* VIEW ARCHITECTURE 2: ADVANCED SYSTEM KANBAN SEGMENTATION */}
+                    {viewMode === 'kanban' && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                        {['Todo', 'In Progress', 'Done'].map(colName => {
+                          const colTasks = filteredTasks.filter(t => t.status === colName);
+                          return (
+                            <div key={colName} className={`border-2 rounded-2xl p-5 transition-colors ${darkMode ? 'bg-[#0E1738]/40 border-slate-800/60' : 'bg-slate-200/40 border-slate-300/50'}`}>
+                              <div className="flex items-center justify-between mb-4 pb-2 border-b-2 border-dashed border-slate-700/50">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                  <span className={`w-2 h-2 rounded-full bg-current ${getStatusColor(colName)}`}></span> {colName}
+                                </h4>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-400 font-bold">{colTasks.length}</span>
                               </div>
-                              <div className="space-y-2">
-                                {groups[dateKey].map(task => (
-                                  <div key={task.id || task._id} className={`p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between ${darkMode ? 'bg-[#1C2541]' : 'bg-slate-50'}`}>
-                                    <h5 className="text-xs font-bold line-clamp-1">{task.title}</h5>
-                                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-slate-200 dark:border-slate-800">
-                                      <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-500"><Edit2 size={10} /></button>
-                                      <button onClick={() => triggerDeleteConfirmation(task)} className="text-slate-400 hover:text-rose-500"><Trash2 size={10} /></button>
+                              <div className="space-y-4">
+                                {colTasks.map(task => (
+                                  <div key={task._id || task.id} className={`border-2 rounded-xl p-4 shadow-sm group transition-all duration-200 hover:border-slate-500 ${darkMode ? 'bg-[#0E1738] border-slate-800' : 'bg-white border-slate-300'}`}>
+                                    <h5 className={`text-xs font-black tracking-wide mb-1.5 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{task.title}</h5>
+                                    <p className="text-slate-400 text-[11px] line-clamp-2 mb-3 leading-normal">{task.description}</p>
+                                    <div className="flex justify-between items-center pt-2 border-t dark:border-slate-800 border-slate-100">
+                                      {getPriorityBadge(task.priority)}
+                                      <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-400 p-1"><Edit2 size={11} /></button>
                                     </div>
                                   </div>
                                 ))}
                               </div>
                             </div>
-                          ))}
-                          {nonDatedTasks.length > 0 && (
-                            <div className={`border-2 rounded-2xl p-4 flex flex-col ${darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-300'}`}>
-                              <div className="text-[10px] uppercase font-black text-amber-500 tracking-wider mb-3 flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
-                                <HelpCircle size={11} /> Unscheduled
-                              </div>
-                              <div className="space-y-2">
-                                {nonDatedTasks.map(task => (
-                                  <div key={task.id || task._id} className={`p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between ${darkMode ? 'bg-[#1C2541]' : 'bg-slate-50'}`}>
-                                    <h5 className="text-xs font-bold line-clamp-1">{task.title}</h5>
-                                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-slate-200 dark:border-slate-800">
-                                      <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-500"><Edit2 size={10} /></button>
-                                      <button onClick={() => triggerDeleteConfirmation(task)} className="text-slate-400 hover:text-rose-500"><Trash2 size={10} /></button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* VIEW ARCHITECTURE 3: HIGH-CONTRAST DATA LEDGER LIST VIEW */}
+                    {viewMode === 'list' && (
+                      <div className={`border-2 rounded-2xl overflow-hidden shadow-sm transition-colors ${darkMode ? 'border-slate-800 bg-[#0E1738]' : 'border-slate-300 bg-white'}`}>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs min-w-[600px]">
+                            <thead className={`font-black uppercase tracking-widest text-slate-400 border-b-2 ${darkMode ? 'bg-[#121B3A] border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+                              <tr>
+                                <th className="p-4.5 pl-6">Index Document Title</th>
+                                <th className="p-4.5">Storage Workspace</th>
+                                <th className="p-4.5">Priority</th>
+                                <th className="p-4.5">Pipeline Status</th>
+                                <th className="p-4.5 text-right pr-6">Action Sets</th>
+                              </tr>
+                            </thead>
+                            <tbody className={`divide-y-2 ${darkMode ? 'divide-slate-800/80' : 'divide-slate-200/60'}`}>
+                              {filteredTasks.map(task => (
+                                <tr key={task._id || task.id} className={`transition-colors ${darkMode ? 'hover:bg-slate-800/20' : 'hover:bg-slate-50'}`}>
+                                  <td className="p-4 pl-6">
+                                    <div className={`font-black text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{task.title}</div>
+                                    <div className="text-[11px] text-slate-400 truncate max-w-xs mt-0.5">{task.description}</div>
+                                  </td>
+                                  <td className="p-4 uppercase text-[10px] tracking-wider font-black text-slate-400">
+                                    <span className="bg-slate-100 dark:bg-[#151F45] px-2.5 py-1 rounded-lg border dark:border-slate-700">{task.category}</span>
+                                  </td>
+                                  <td className="p-4">{getPriorityBadge(task.priority)}</td>
+                                  <td className="p-4">
+                                    <span className={`text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 ${getStatusColor(task.status)}`}>
+                                      <span className="w-1.5 h-1.5 rounded-full bg-current"></span> {task.status}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-right pr-6 space-x-2 text-slate-400">
+                                    <button onClick={() => setEditingTask(task)} className="p-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 hover:text-emerald-400 transition-colors"><Edit2 size={12} /></button>
+                                    <button onClick={() => setDeleteModal({ open: true, id: task._id || task.id, title: task.title })} className="p-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 hover:text-rose-400 transition-colors"><Trash2 size={12} /></button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* VIEW ARCHITECTURE 4: TEMPORAL MILESTONE CALENDAR HORIZONS */}
+                    {viewMode === 'calendar' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                        {Array.from(new Set(filteredTasks.map(t => t.dueDate ? new Date(t.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unscheduled Target'))).map(dateGroup => (
+                          <div key={dateGroup} className={`border-2 rounded-2xl p-5 shadow-sm transition-colors ${darkMode ? 'bg-[#0E1738] border-slate-800' : 'bg-white border-slate-300'}`}>
+                            <div className="text-[10px] font-black text-cyan-500 dark:text-cyan-400 uppercase tracking-widest mb-4 border-b-2 pb-2 flex items-center gap-1.5">
+                              <Calendar size={12} /> {dateGroup}
                             </div>
-                          )}
-                        </>
-                      );
-                    })()}
+                            <div className="space-y-3">
+                              {filteredTasks.filter(t => (t.dueDate ? new Date(t.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unscheduled Target') === dateGroup).map(task => (
+                                <div key={task._id || task.id} className={`p-3 rounded-xl border flex justify-between items-center transition-all ${darkMode ? 'bg-[#151F45] border-slate-700 text-slate-200 hover:border-slate-600' : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-400'}`}>
+                                  <div className="truncate pr-2">
+                                    <div className={`font-bold text-xs truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{task.title}</div>
+                                    <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mt-0.5">{task.status}</div>
+                                  </div>
+                                  <button onClick={() => setEditingTask(task)} className="text-slate-400 hover:text-emerald-400 p-1.5"><Edit2 size={11} /></button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-              </>
+              </div>
+            ) : (
+              // =========================================================================
+              // TAB SECTION 2: HIGH FIDELITY COMPILE COMPILATION BLUEPRINT SCHEMATIC FORM
+              // =========================================================================
+              <div className={`border-2 rounded-2xl p-8 shadow-md relative transition-all duration-500 ${darkMode ? 'bg-[#0E1738] border-slate-800/90' : 'bg-white border-slate-300/90'}`}>
+                <div className="absolute top-0 left-0 w-full h-[4px] bg-gradient-to-r from-emerald-400 to-cyan-500"></div>
+                
+                <h2 className="text-sm font-black uppercase tracking-widest mb-6 flex items-center gap-2.5 text-emerald-500 dark:text-emerald-400">
+                  <PlusCircle size={16} /> Initialize Workspace Schema Payload
+                </h2>
+
+                {validationAlert && (
+                  <div className="mb-6 p-4 bg-rose-500/10 border-2 border-rose-500/20 rounded-xl text-xs text-rose-500 dark:text-rose-400 flex items-center gap-2">
+                    <AlertCircle size={14} /> <span className="font-bold">{validationAlert}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateTask} className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Task Document Header Name (Min 5)</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={title} 
+                      onChange={(e) => setTitle(e.target.value)} 
+                      className={`w-full border-2 rounded-xl px-4 py-3 text-xs focus:outline-none font-medium transition-all ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-cyan-500 focus:bg-white'}`} 
+                      placeholder="Specify dynamic identifier key..." 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Operational Functional Blueprint Specifications (Min 10)</label>
+                    <textarea 
+                      required 
+                      value={description} 
+                      onChange={(e) => setDescription(e.target.value)} 
+                      rows={5} 
+                      className={`w-full border-2 rounded-xl px-4 py-3 text-xs focus:outline-none font-medium resize-none transition-all ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-cyan-500 focus:bg-white'}`} 
+                      placeholder="Outline target structural criteria and systemic pre-requisite configurations..." 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">State Sequence</label>
+                      <select 
+                        value={status} 
+                        onChange={(e) => setStatus(e.target.value)} 
+                        className={`w-full border-2 rounded-xl p-3 text-xs font-bold uppercase tracking-wider focus:outline-none transition-colors ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-500'}`}
+                      >
+                        <option value="Todo">Todo</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Done">Done</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Urgency Priority</label>
+                      <select 
+                        value={priority} 
+                        onChange={(e) => setPriority(e.target.value)} 
+                        className={`w-full border-2 rounded-xl p-3 text-xs font-bold uppercase tracking-wider focus:outline-none transition-colors ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-500'}`}
+                      >
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Allocation Pipeline Partition</label>
+                      <select 
+                        value={selectedFolder} 
+                        onChange={(e) => setSelectedFolder(e.target.value)} 
+                        className={`w-full border-2 rounded-xl p-3 text-xs font-bold uppercase tracking-wider focus:outline-none transition-colors ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-cyan-500'}`}
+                      >
+                        {folders.map(f => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-black mb-2">Target Milestone Timeline Boundary Boundary</label>
+                    <div className="relative">
+                      <input 
+                        type="date" 
+                        value={dueDate} 
+                        onChange={(e) => setDueDate(e.target.value)} 
+                        className={`w-full border-2 rounded-xl px-4 py-3.5 text-xs focus:outline-none font-bold transition-all ${darkMode ? 'bg-[#151F45] border-slate-700 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-cyan-500 focus:bg-white'}`} 
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="w-full font-black uppercase tracking-widest py-4 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-500 hover:opacity-95 text-slate-950 text-xs shadow-lg shadow-emerald-500/10 active:scale-[0.995] transition-transform"
+                  >
+                    Pipeline Stream to Cluster
+                  </button>
+                </form>
+              </div>
             )}
           </div>
 
-          {/* Column 4: Premium Workspace Audit Activity Ledger Log */}
-          <div className="lg:col-span-1">
-            <div className={`border-2 rounded-2xl p-5 shadow-sm sticky top-28 max-h-[75vh] flex flex-col justify-between overflow-hidden ${
-              darkMode ? 'bg-[#111A31] border-slate-800' : 'bg-white border-slate-300'
-            }`}>
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-4 pb-3 border-b-2 border-slate-200 dark:border-slate-800">
-                  <Activity size={14} className="text-emerald-500 animate-pulse" />
-                  Activity Stream Log
-                </h3>
-                <div className="space-y-3 overflow-y-auto max-h-[55vh] pr-1 scrollbar-thin">
-                  {activities.map((log) => (
-                    <div key={log.id} className="text-[11px] leading-relaxed border-l-2 pl-3 pb-1 border-slate-300 dark:border-slate-700">
-                      <div className="flex items-center gap-1.5 text-slate-400 text-[9px] uppercase font-bold">
-                        <Clock size={10} />
-                        <span>{log.timestamp}</span>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          log.type === 'create' ? 'bg-emerald-500' :
-                          log.type === 'update' ? 'bg-blue-500' :
-                          log.type === 'delete' ? 'bg-rose-500' : 'bg-slate-400'
-                        }`} />
-                      </div>
-                      <p className={`mt-0.5 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{log.message}</p>
-                    </div>
-                  ))}
+          {/* Right Column Grid: Complete Live Stream Audit Ledger Activity Control Panel */}
+          <div className="lg:col-span-1 space-y-6">
+            
+            {/* Quick Summary Aggregations Widget */}
+            <div className={`border-2 rounded-2xl p-5 shadow-sm transition-all duration-500 ${darkMode ? 'bg-[#0E1738] border-slate-800' : 'bg-white border-slate-300'}`}>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
+                <Sliders size={12} className="text-cyan-400" /> Pipeline Telemetry
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`p-3 border-2 rounded-xl text-center ${darkMode ? 'bg-[#121B3A] border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="text-lg font-black tracking-tight font-mono text-emerald-500">{tasks.length}</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-0.5">Total Objects</div>
+                </div>
+                <div className={`p-3 border-2 rounded-xl text-center ${darkMode ? 'bg-[#121B3A] border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="text-lg font-black tracking-tight font-mono text-rose-500">{tasks.filter(t => t.priority === 'High').length}</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-0.5">High Severity</div>
                 </div>
               </div>
-              <button 
-                onClick={() => setActivities([{ id: '1', message: 'Log index context wiped clean.', timestamp: new Date().toLocaleTimeString(), type: 'system' }])}
-                className="text-[9px] uppercase font-black text-slate-400 hover:text-rose-500 text-center pt-3 border-t border-slate-200 dark:border-slate-800 transition-colors"
-              >
-                Clear Stream Audit Index
-              </button>
+              
+              <div className="mt-4">
+                <label className="block text-[8px] uppercase tracking-widest text-slate-400 font-black mb-1.5">Collection Display Threshold Limit</label>
+                <select 
+                  value={limit} 
+                  onChange={(e) => setLimit(e.target.value)} 
+                  className={`w-full border-2 rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase focus:outline-none ${darkMode ? 'bg-[#151F45] border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                >
+                  <option value="5">5 Documents</option>
+                  <option value="15">15 Documents</option>
+                  <option value="30">30 Documents</option>
+                  <option value="100">100 Documents</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Continuous Live Activity Log Subsystem Panel */}
+            <div className={`border-2 rounded-2xl p-5 max-h-[60vh] flex flex-col overflow-hidden shadow-sm transition-all duration-500 ${darkMode ? 'bg-[#0E1738] border-slate-800' : 'bg-white border-slate-300'}`}>
+              <div className="mb-4">
+                <h3 className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 pb-3 border-b-2 ${darkMode ? 'text-slate-400 border-slate-800/80' : 'text-slate-500 border-slate-200/80'}`}>
+                  <Activity size={14} className="text-emerald-500 animate-pulse" /> Activity Stream Log
+                </h3>
+              </div>
+              <div className="space-y-3.5 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+                {activities.map((log) => (
+                  <div key={log.id} className="text-[11px] border-l-2 pl-3 border-slate-400 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-500 transition-colors py-0.5">
+                    <div className="text-[8px] text-slate-400 font-black uppercase flex items-center gap-1.5">
+                      <Clock size={10} className="text-cyan-500" />
+                      <span>{log.timestamp}</span>
+                      <span className="opacity-40 font-mono">[{log.type}]</span>
+                    </div>
+                    <p className={`mt-0.5 font-semibold text-xs leading-normal ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{log.message}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
         </div>
       </div>
 
-      {/* CORE FORM PARAMETERS EDIT COMPONENT MODAL BANNER */}
+      {/* =========================================================================
+         POPUP DIALOG LAYOUT OVERLAY WINDOW 1: MUTATE RECORD PARAMS MODAL (FIXED SELECTION THEME)
+         ========================================================================= */}
       {editingTask && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className={`border-2 rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-slide-up ${
-            darkMode ? 'bg-[#111A31] border-slate-700' : 'bg-white border-slate-300'
-          }`}>
-            <div className="flex items-center justify-between mb-4 pb-2 border-b-2 border-slate-200 dark:border-slate-800">
-              <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
-                <Edit2 size={13} className="text-emerald-500" /> Commit Schema Changes
-              </h3>
-              <button onClick={() => setEditingTask(null)} className="text-slate-400 hover:text-rose-500"><X size={16} /></button>
-            </div>
-            <form onSubmit={handleUpdateTask} className="space-y-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`border-2 rounded-2xl max-w-md w-full p-8 relative shadow-2xl transition-all duration-300 ${darkMode ? 'bg-[#0E1738] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <button onClick={() => setEditingTask(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+            <h3 className="text-xs font-black uppercase mb-6 text-emerald-500 dark:text-emerald-400 tracking-widest flex items-center gap-1"><Edit2 size={12}/> Mutate Schema Index Parameters</h3>
+            
+            <form onSubmit={handleUpdateTask} className="space-y-5">
               <div>
-                <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Task Title</label>
-                <input
-                  type="text" required
-                  value={editingTask.title}
-                  onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })}
-                  className={`w-full border-2 rounded-xl px-3 py-2 text-xs focus:outline-none ${darkMode ? 'bg-[#1C2541] border-slate-600 text-white' : 'bg-slate-50 border-slate-300'}`}
+                <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-black mb-1.5">Document Title Name</label>
+                <input 
+                  type="text" 
+                  value={editingTask.title} 
+                  onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })} 
+                  className={`w-full border-2 rounded-xl p-3 text-xs focus:outline-none font-semibold ${darkMode ? 'border-slate-700 bg-[#151F45] text-white' : 'border-slate-300 bg-slate-50 text-slate-900'}`} 
                 />
               </div>
+
               <div>
-                <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Description</label>
-                <textarea
-                  required rows={2}
-                  value={editingTask.description}
-                  onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
-                  className={`w-full border-2 rounded-xl px-3 py-2 text-xs focus:outline-none resize-none ${darkMode ? 'bg-[#1C2541] border-slate-600 text-white' : 'bg-slate-50 border-slate-300'}`}
+                <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-black mb-1.5">Operational Description</label>
+                <textarea 
+                  value={editingTask.description} 
+                  onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })} 
+                  rows={4} 
+                  className={`w-full border-2 rounded-xl p-3 text-xs focus:outline-none resize-none font-semibold ${darkMode ? 'border-slate-700 bg-[#151F45] text-white' : 'border-slate-300 bg-slate-50 text-slate-900'}`} 
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Status</label>
-                  <select value={editingTask.status} onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })} className={`w-full border-2 rounded-xl p-2 text-xs ${darkMode ? 'bg-[#1C2541] border-slate-600 text-white' : 'bg-white border-slate-300'}`}>
+                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-black mb-1.5">Status Flow State</label>
+                  <select 
+                    value={editingTask.status} 
+                    onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })} 
+                    className={`w-full border-2 rounded-xl p-3 text-xs font-black uppercase tracking-wider focus:outline-none ${darkMode ? 'bg-[#151F45] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+                  >
                     <option value="Todo">Todo</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Done">Done</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Priority</label>
-                  <select value={editingTask.priority} onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value })} className={`w-full border-2 rounded-xl p-2 text-xs ${darkMode ? 'bg-[#1C2541] border-slate-600 text-white' : 'bg-white border-slate-300'}`}>
+                  <label className="block text-[9px] uppercase tracking-widest text-slate-400 font-black mb-1.5">Urgency Severity</label>
+                  <select 
+                    value={editingTask.priority} 
+                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value })} 
+                    className={`w-full border-2 rounded-xl p-3 text-xs font-black uppercase tracking-wider focus:outline-none ${darkMode ? 'bg-[#151F45] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+                  >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
                     <option value="High">High</option>
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingTask(null)} className={`w-1/2 font-bold py-2.5 rounded-xl text-xs uppercase ${darkMode ? 'bg-[#1C2541] border-slate-600' : 'bg-slate-100'}`}>Cancel</button>
-                <button type="submit" className="w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase">Commit Changes</button>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setEditingTask(null)} 
+                  className={`w-1/2 text-xs uppercase font-black tracking-widest py-3.5 border-2 rounded-xl transition-colors ${darkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-500 hover:bg-slate-100'}`}
+                >
+                  Abort Mutate
+                </button>
+                <button 
+                  type="submit" 
+                  className="w-1/2 text-xs uppercase py-3.5 bg-gradient-to-r from-emerald-400 to-cyan-500 hover:opacity-90 text-slate-950 rounded-xl font-black tracking-widest shadow-md"
+                >
+                  Commit Mutation
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Confirmation Modal Prompt Window */}
+      {/* =========================================================================
+         POPUP DIALOG LAYOUT OVERLAY WINDOW 2: STORAGE PARTITION WORKSPACE ALLOCATOR MODAL
+         ========================================================================= */}
+      {showFolderModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`border-2 rounded-2xl max-w-sm w-full p-6 relative shadow-2xl ${darkMode ? 'bg-[#0E1738] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <button onClick={() => setShowFolderModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={14} /></button>
+            <h3 className="text-xs font-black uppercase tracking-widest mb-4 text-cyan-400 flex items-center gap-1.5"><FolderPlus size={14} /> Allocate Storage Partition</h3>
+            <form onSubmit={handleAddFolder} className="space-y-4">
+              <div>
+                <label className="block text-[8px] uppercase tracking-widest text-slate-400 font-black mb-1.5">New Namespace Identifier</label>
+                <input 
+                  type="text" 
+                  required
+                  value={newFolderInput} 
+                  onChange={(e) => setNewFolderInput(e.target.value)} 
+                  placeholder="e.g. Production QA, Security Core"
+                  className={`w-full border-2 rounded-xl p-3 text-xs focus:outline-none font-bold ${darkMode ? 'border-slate-700 bg-[#151F45] text-white' : 'border-slate-300 bg-slate-50 text-slate-900'}`} 
+                />
+              </div>
+              <button type="submit" className="w-full text-xs font-black uppercase tracking-widest py-3 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-slate-950 shadow-md">
+                Register Partition Segment
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+         POPUP DIALOG LAYOUT OVERLAY WINDOW 3: DESTRUCTIVE RECORD WIPE MODAL
+         ========================================================================= */}
       {deleteModal.open && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className={`border-2 rounded-2xl max-w-sm w-full p-6 text-center ${darkMode ? 'bg-[#111A31] border-slate-700' : 'bg-white border-slate-300'}`}>
-            <div className="mx-auto w-11 h-11 bg-rose-500/10 text-rose-500 border-2 border-rose-500/20 rounded-full flex items-center justify-center mb-4"><Trash2 size={20} /></div>
-            <h3 className="text-sm font-black uppercase tracking-wider mb-2">Confirm Data Purge</h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-6">Are you sure you want to delete <span className="font-bold text-rose-400">"{deleteModal.title}"</span>?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteModal({ open: false, id: '', title: '' })} className={`w-1/2 border-2 font-bold py-2.5 rounded-xl text-xs uppercase ${darkMode ? 'bg-[#1C2541] border-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>Cancel</button>
-              <button onClick={handleConfirmedDelete} className="w-1/2 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase">Confirm Delete</button>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className={`border-2 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl transition-all ${darkMode ? 'bg-[#0E1738] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <div className="mx-auto w-12 h-12 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mb-4 border border-rose-500/20"><AlertCircle size={22} /></div>
+            <h3 className="text-xs font-black uppercase mb-1 text-rose-500 tracking-widest">Execute Collection Wipe</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-400 mb-6 font-semibold">Are you absolutely sure you want to permanently strip the database record metadata object: <span className="block mt-1 dark:text-slate-200 text-slate-800 italic">"{deleteModal.title}"</span>?</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setDeleteModal({ open: false, id: '', title: '' })} 
+                className={`w-1/2 text-xs font-black uppercase tracking-widest p-3 border-2 rounded-xl transition-colors ${darkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-500 hover:bg-slate-100'}`}
+              >
+                Abort Drop
+              </button>
+              <button 
+                onClick={handleConfirmedDelete} 
+                className="w-1/2 text-xs font-black uppercase tracking-widest p-3 bg-gradient-to-r from-rose-500 to-red-600 hover:opacity-90 text-white rounded-xl shadow-md"
+              >
+                Execute Drop
+              </button>
             </div>
           </div>
         </div>
       )}
 
     </div>
+  );
+}
+
+// Helper wrapper to extract badge nodes
+function getPriorityBadge(priority: string) {
+  let styles = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400';
+  if (priority === 'High') styles = 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400';
+  if (priority === 'Medium') styles = 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400';
+  
+  return (
+    <span className={`text-[8px] px-2.5 py-0.5 rounded-lg font-black tracking-widest uppercase border ${styles}`}>
+      {priority}
+    </span>
   );
 }
