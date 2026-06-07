@@ -1,6 +1,10 @@
 # SyncSphere - Task & Workspace Manager
 SyncSphere is a full-stack task management web application designed for teams. It features an interactive dashboard with light/dark theme switching, multiple task viewing modes, and a resilient backend database connection system.
 
+## Group Members:
+Shahzaib Shah and Syed Ahmed Raza
+
+
 ## ✨ Features
 Dual Themes: Clean, fully styled Light Mode and Dark Mode layouts.
 
